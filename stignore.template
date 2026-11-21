@@ -1,0 +1,60 @@
+// ASRTTS / Obsidian 同步忽略规则（每台设备各一份，文件本身不同步）
+// 唯一副本是本文件：改规则先改这里，再两端各复制一次
+//   手机    cp stignore.template .stignore
+//   Windows Copy-Item stignore.template .stignore
+// 核对：手机 bash check-sync.sh，PC 见 同步说明.md 第三节（注释、空行、CRLF 不算差异，规则行顺序算）
+// (?d) = deletable，允许 Syncthing 在需要时直接删掉这些垃圾
+
+// ---------- Obsidian：工作区与界面状态 ----------
+// 两台设备各存各的窗口/标签，同步过去只会互相覆盖（表现是“刚才打开的笔记突然关了”）
+(?d)/.obsidian/workspace
+(?d)/.obsidian/workspace.json
+(?d)/.obsidian/workspace-mobile.json
+(?d)/.obsidian/graph.json
+(?d)/.obsidian/hotkeys.json
+(?d)/.obsidian/cache
+(?d)/.trash/
+
+// ---------- Obsidian 插件：本机路径类数据 ----------
+// 有些插件把本机绝对路径、设备 ID 存进 data.json，同步会导致一端报错。默认不排除：
+// 确认装了这类插件（Remotely Save / Local REST API 之类）再取消注释。
+// (?d)/.obsidian/plugins/*/data.json
+
+// ---------- ASR 工作区（切片缓存） ----------
+// work/<名-大小>/chunks.json 是逐片转写的缓存，也是「不重复付费」的唯一凭据：
+// 放行它，手机转过的音频在 PC 上重跑 --ai-only / --force 时不用再付一遍转写费。
+// 这里曾经写的是 (?d)/work/（整目录排除）——对时间成立，对钱不成立：重建就是重新转写一遍。
+// 运行日志每端各写各的，同步只会产生冲突
+(?d)/work/error.log
+
+// ---------- 反向管线（cast）的中间产物 ----------
+// merged.wav 一期十几 MB，concat.txt / chapters.txt 都是每次重算的，
+// 传过去只是让两端各自覆盖。分段 wav 要传：那是花过钱的。
+(?d)/work/*/merged.wav
+(?d)/work/*/concat.txt
+(?d)/work/*/chapters.txt
+(?d)/logs/
+
+// ---------- 绝对不能同步的 ----------
+// 里面有 DeepSeek / 豆包 Key，同步过去等于把 Key 复制到另一台机器上
+/config.env
+
+// ---------- Python 缓存 ----------
+// 脚本跑一次就生成，体积还不小；传过去只会两边反复覆盖、产生冲突
+// 不带斜杠 = 按目录/文件名匹配，任意层级都生效（scripts/__pycache__ 这类也能拦）
+(?d)__pycache__
+(?d)*.pyc
+
+// ---------- 系统与临时垃圾 ----------
+(?d).DS_Store
+(?d)Thumbs.db
+(?d)desktop.ini
+(?d)~$*
+(?d)*.tmp
+(?d)*.part
+(?d)*.crdownload
+// Android 共享存储不支持硬链接，失败时会留下 .l2s.* 隐藏文件
+(?d).l2s.*
+
+// ---------- 安装包别放库里 ----------
+(?d)/syncthing-windows-setup-*.exe

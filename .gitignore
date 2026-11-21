@@ -1,0 +1,30 @@
+# 数据与密钥
+config.env
+out/
+archive/
+work/
+logs/
+00-Inbox/
+.asr_state.json
+.stignore
+
+# Python
+__pycache__/
+*.pyc
+
+# 媒体与中间产物
+*.m4a
+*.mp3
+*.wav
+*.ogg
+*.opus
+*.srt
+*.lrc
+merged.wav
+concat.txt
+chapters.txt
+
+# 系统垃圾
+.DS_Store
+Thumbs.db
+desktop.ini
