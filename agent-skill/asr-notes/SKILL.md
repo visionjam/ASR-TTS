@@ -46,7 +46,7 @@ compatibility: >-
 数据目录就是共享目录本身，**文件不用先复制到别的工作区**。库里有一条一键入口：
 
 ```bash
-cd /sdcard/ASRTTS
+cd /storage/emulated/0/Documents/vault/ASRTTS
 bash 一键处理.sh              # inbox/ 里的音频 + 字幕，一次跑完
 bash 一键处理.sh --dry-run    # 只列清单，不调 API、不写文件
 ```
@@ -111,7 +111,7 @@ python3 /skills/asr-notes/scripts/asr.py --daily
 ```
 DEEPSEEK_API_KEY=sk-...
 LLM_MODEL=deepseek-chat
-EXTRA_DIRS=/sdcard/Music/Recordings
+EXTRA_DIRS=/storage/emulated/0/Music/Recordings
 ```
 
 一个 Key 管两件事。**不要写进 SKILL.md 或脚本。** Key 出现在聊天记录里时，提醒用户用完去控制台重置。
@@ -390,7 +390,7 @@ python3 /skills/asr-notes/scripts/asr.py --daily --date 2026-11-17
 改完跑：
 
 ```bash
-bash /sdcard/ASRTTS/tests/run.sh
+bash /storage/emulated/0/Documents/vault/ASRTTS/tests/run.sh
 ```
 
 退出码 0 才算通过；**2 表示有跳过项（素材缺失），不能算通过**。

@@ -1,6 +1,7 @@
 #!/bin/bash
-# 回归测试：改完 asr.py / asr_render.py / asr_quotes.py / subtitle.py 之后跑一遍
-#   bash /sdcard/ASRTTS/tests/run.sh
+# 回归测试：改完 asr.py / asr_render.py / asr_quotes.py / subtitle.py 之后跑一遍，
+# 动了 cast.py（尤其 --spoken 的口述稿分块）也跑一遍
+#   bash /storage/emulated/0/Documents/vault/ASRTTS/tests/run.sh
 #
 # 退出码约定（别把跳过当通过）：
 #   0 = 全部通过   1 = 有失败   2 = 有跳过项（素材缺失，不算通过）
@@ -8,7 +9,7 @@ set -u
 cd "$(dirname "$0")" || exit 1
 
 pass=0; skip=0; fail=0
-for t in t_core.py t_subtitle.py; do
+for t in t_core.py t_subtitle.py t_cast_spoken.py t_check_draft.py; do
   echo "──── $t"
   python3 "$t"
   case $? in

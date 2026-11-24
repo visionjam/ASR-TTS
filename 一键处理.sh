@@ -1,7 +1,7 @@
 #!/bin/bash
 # 一键处理：把音频或字幕丢进 inbox/，在共享目录里跑这一条就够
 #
-#   bash /sdcard/ASRTTS/一键处理.sh
+#   bash /storage/emulated/0/Documents/vault/ASRTTS/一键处理.sh
 #   bash 一键处理.sh --dry-run              # 只列清单，不调 API、不写文件
 #   bash 一键处理.sh --kind self            # 自己口述的录音/视频
 #   bash 一键处理.sh --force                # 重跑已处理过的
@@ -16,7 +16,6 @@ set -u
 DIR=$(cd "$(dirname "$0")" && pwd)
 cd "$DIR" || exit 1
 SKILL=${ASR_SKILL:-/skills/asr-notes}
-[ -d "$SKILL" ] || SKILL="$DIR/agent-skill/asr-notes"
 PY=${PYTHON:-python3}
 
 [ -f "$SKILL/scripts/asr.py" ] || {

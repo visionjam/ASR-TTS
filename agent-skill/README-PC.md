@@ -15,13 +15,19 @@ agent-skill/
 │                subtitle.py · split_md.py · setup.sh · prompts/
 └─ tts-cast/                 文章 → 播客（反向）
    ├─ SKILL.md
-   ├─ references/  deepseek-tts.md · sample.md
+   ├─ references/  deepseek-tts.md · sample.md · verbalization-protocol.md
    └─ scripts/  cast.py · cast_text.py · cast_render.py · cast_common.py
-                 selftest.py · setup.sh · prompts/rewrite.md
+                 verbatim.py · check_draft.py · make_samples.py · selftest.py · setup.sh
+                 prompts/rewrite.md · spoken-outline.md · spoken-block.md
 ```
 
+`tts-cast/scripts/verbatim.py` 是进 TTS 之前的读法层，默认开，`--no-verbalize` 关。
+它的回归样本（二十条短句和对照表）**不在导出件里**，在 Syncthing 同步下来的库根：
+`ASRTTS/tests/verbalize/`。换了 TTS 供应商要重测时，从那里取，别另起一份。
+
 两个技能**共用一个 `DEEPSEEK_API_KEY`**、共用一份账单。asr 那边是转写 + 整理，
-cast 这边是改写（可选）+ 合成。
+cast 这边是改写（二选一：`--rewrite` 只改句子、保住原文结构；`--spoken` 重排成口述稿，
+先出大纲再分块落地）+ 合成。
 
 ## 一、装到 PC
 
@@ -154,6 +160,20 @@ python3 ~/skills/tts-cast/scripts/cast.py --force out/<文件夹>/script.md   # 
 ```bash
 python3 ~/skills/tts-cast/scripts/selftest.py
 ```
+
+自己写稿、要多篇合成一集时，烧音频前先量一遍（也不花钱）：
+
+```bash
+python3 ~/skills/tts-cast/scripts/check_draft.py 稿子.md 原文1.md 原文2.md
+```
+
+报时长（三十分钟上限，超了说多出多少字）、章节数、重复段落、超长句；退出码 1 就该改。
+成稿送进 `cast.py` 时**不要加 `--spoken`**，那是二次改写。
+写稿的组织方式见 `tts-cast/SKILL.md` 第八节。
+
+`--spoken` 那条路还有两个开关：`--stop-at-outline` 只出大纲（零 TTS 费用），
+`--outline 大纲.md` 复用改过的大纲只跑落地。两条路跑完都会把 `inbox/` 里的原件
+搬进 `archive/`（`--no-archive` 关）；从 `out/…/script.md` 重跑不搬。
 
 手机端库里有 `一键处理.sh`（音频 + 字幕）和 `一键开播.sh`（文章）；
 Windows 上对应 `windows\asrtts.ps1 process` / `cast` 和根目录的 `.cmd`。

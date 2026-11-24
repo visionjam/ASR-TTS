@@ -185,6 +185,24 @@ def main():
     check("汉字算 2", billed_chars("汉字") == 4, billed_chars("汉字"))
     check("半角算 1", billed_chars("abc") == 3, billed_chars("abc"))
 
+    print("\n[7] 口述稿分块（--spoken）")
+    try:
+        import cast as C
+        art2 = {"title": "t", "dropped": [], "blocks":
+                [{"kind": "p", "text": "这是一句用来凑长度的话。" * 40} for _ in range(9)]}
+        cs = C.spoken_blocks(art2)
+        lens = [sum(len(b["text"]) for b in c) for c in cs]
+        check("每块不超上限", all(n <= C.SPOKEN_BLOCK_MAX for n in lens), lens)
+        check("除末块外都不碎", all(n >= C.SPOKEN_BLOCK_MIN - 200 for n in lens[:-1]), lens)
+        check("分块不丢字、不改序",
+              "".join(b["text"] for c in cs for b in c)
+              == "".join(b["text"] for b in art2["blocks"]))
+        ol = "## 主线\n一句话\n\n## 删改清单\n- 删：某段铺垫\n\n## 字数\n旧结果"
+        check("大纲能取到删改清单", "删：某段铺垫" in C.outline_section(ol, ("删改清单",)))
+        check("重跑不会叠出第二个字数段", "## 字数" not in C.strip_section(ol, "字数"))
+    except (ImportError, SystemExit) as e:
+        check("import cast（要先 pip install requests）", False, e)
+
     print()
     if FAIL:
         print("✗ 失败 %d 项：%s" % (len(FAIL), "、".join(FAIL)))

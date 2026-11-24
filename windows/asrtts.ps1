@@ -101,6 +101,128 @@ function Show-RecentOut {
     foreach ($d in $dirs) { Write-Info ('  ' + $d.Name) }
 }
 
+# ---------- 本地 Kokoro TTS 服务（tools\local-tts） ----------
+# venv 放在 ASRTTS 外面：<workspace>\.local-tts\venv，避免 Syncthing 同步到手机。
+$LocalTtsDir = Join-Path $Root 'tools\local-tts'
+$LocalTtsServer = Join-Path $LocalTtsDir 'server.py'
+$LocalTtsHome = Join-Path (Split-Path -Parent $Root) '.local-tts'
+$LocalTtsVenv = Join-Path $LocalTtsHome 'venv\Scripts\python.exe'
+
+function Get-ConfigMap {
+    $map = @{}
+    $p = Join-Path $Root 'config.env'
+    if (Test-Path -LiteralPath $p) {
+        foreach ($line in Get-Content -LiteralPath $p -Encoding UTF8) {
+            if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$') {
+                $map[$Matches[1]] = $Matches[2].Trim().Trim('"').Trim("'")
+            }
+        }
+    }
+    return $map
+}
+
+function Get-EffectiveProvider([string[]]$Argv) {
+    $prov = ''
+    if ($Argv) {
+        for ($i = 0; $i -lt $Argv.Count; $i++) {
+            if (([string]$Argv[$i]) -eq '--provider' -and ($i + 1) -lt $Argv.Count) {
+                $prov = [string]$Argv[$i + 1]
+            }
+        }
+    }
+    if (-not $prov) {
+        $map = Get-ConfigMap
+        if ($map.ContainsKey('TTS_PROVIDER')) { $prov = [string]$map['TTS_PROVIDER'] }
+    }
+    if (-not $prov) { $prov = 'deepseek' }
+    return $prov.Trim().ToLowerInvariant()
+}
+
+function Get-LocalTtsUrl {
+    $map = Get-ConfigMap
+    $u = 'http://127.0.0.1:1919'
+    if ($map.ContainsKey('LOCAL_TTS_URL') -and $map['LOCAL_TTS_URL']) { $u = [string]$map['LOCAL_TTS_URL'] }
+    return $u.TrimEnd('/')
+}
+
+function Test-LocalTts([string]$Url) {
+    try {
+        $r = Invoke-WebRequest -UseBasicParsing -Uri ($Url + '/health') -TimeoutSec 2
+        return ($r.StatusCode -eq 200)
+    } catch { return $false }
+}
+
+function Start-LocalTts([string]$Url) {
+    if (-not (Test-Path -LiteralPath $LocalTtsVenv)) {
+        Write-Err ('找不到本地 TTS 的 Python：' + $LocalTtsVenv)
+        Write-Info '先按 tools\local-tts\README.md 建好 venv。'
+        return $false
+    }
+    if (-not (Test-Path -LiteralPath $LocalTtsServer)) {
+        Write-Err ('找不到 ' + $LocalTtsServer)
+        return $false
+    }
+    $port = 1919
+    try { $port = ([uri]$Url).Port } catch { }
+    $outLog = Join-Path $LocalTtsHome 'server.out.log'
+    $errLog = Join-Path $LocalTtsHome 'server.err.log'
+    Write-Info ('启动本地 TTS 服务（端口 ' + $port + '）…')
+    # 用 WMI 起进程：完全脱离当前控制台/管道。用 Start-Process 的话，
+    # 子进程会继承句柄，外层 `... | Select-Object` 会一直等管道关闭。
+    $inner = '"' + $LocalTtsVenv + '" "' + $LocalTtsServer + '" --port ' + $port +
+             ' > "' + $outLog + '" 2> "' + $errLog + '"'
+    $cmdline = 'cmd.exe /c "' + $inner + '"'
+    $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create `
+        -Arguments @{ CommandLine = $cmdline } -ErrorAction SilentlyContinue
+    if (-not $created -or $created.ReturnValue -ne 0) {
+        Write-Err ('启动失败（WMI ReturnValue=' + $(if ($created) { $created.ReturnValue } else { 'n/a' }) + '）')
+        return $false
+    }
+    for ($i = 0; $i -lt 60; $i++) {
+        Start-Sleep -Seconds 1
+        if (Test-LocalTts $Url) { Write-Ok '本地 TTS 服务已就绪'; return $true }
+    }
+    Write-Err '本地 TTS 服务 60 秒内没起来'
+    if (Test-Path -LiteralPath $errLog) {
+        Write-Info '最后几行错误：'
+        Get-Content -LiteralPath $errLog -Tail 8 -ErrorAction SilentlyContinue |
+            ForEach-Object { Write-Info ('  ' + $_) }
+    }
+    return $false
+}
+
+function Ensure-LocalTts([string]$Url) {
+    if (Test-LocalTts $Url) { return $true }
+    return (Start-LocalTts $Url)
+}
+
+function Stop-LocalTts {
+    $procs = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine -like '*local-tts*server.py*' })
+    if ($procs.Count -eq 0) { Write-Info '本地 TTS 服务没在跑'; return }
+    foreach ($p in $procs) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+    Write-Ok ('已停止 ' + $procs.Count + ' 个进程')
+}
+
+function Invoke-Service([string[]]$Argv) {
+    $script:ResultCode = 0
+    $act = 'status'
+    if ($Argv -and $Argv.Count -ge 1) { $act = ([string]$Argv[0]).ToLowerInvariant() }
+    $url = Get-LocalTtsUrl
+    switch ($act) {
+        'start' {
+            if (Ensure-LocalTts $url) { Write-Ok ('服务地址：' + $url) }
+            else { $script:ResultCode = 1 }
+        }
+        'stop' { Stop-LocalTts }
+        'status' {
+            if (Test-LocalTts $url) { Write-Ok ('运行中：' + $url) }
+            else { Write-Info ('没在跑：' + $url + '（cast --provider local 会自动拉起）') }
+        }
+        default { Write-Err '用法：service [start|stop|status]'; $script:ResultCode = 2 }
+    }
+}
+
 function Convert-TsToSeconds([string]$Ts) {
     if (-not $Ts) { return 0 }
     $p = $Ts -split '[:,.]'
@@ -121,6 +243,7 @@ function Resolve-Python {
     if ($c) { [void]$cands.Add(@{ Exe = $c.Source; Pre = @() }) }
     $c = Get-Command py -ErrorAction SilentlyContinue
     if ($c) { [void]$cands.Add(@{ Exe = $c.Source; Pre = @('-3') }) }
+    [void]$cands.Add(@{ Exe = 'D:\Python314\python.exe'; Pre = @() })
     foreach ($cand in $cands) {
         $exe = [string]$cand.Exe
         if (-not $exe) { continue }
@@ -291,6 +414,16 @@ function Invoke-Cast([string[]]$Argv) {
         Write-Err ('找不到 ' + $cast)
         $script:ResultCode = 1
         return
+    }
+    $prov = Get-EffectiveProvider $Argv
+    Write-Info ('TTS provider：' + $prov)
+    if ($prov -eq 'local') {
+        $url = Get-LocalTtsUrl
+        if (-not (Ensure-LocalTts $url)) {
+            Write-Err '本地 TTS 服务不可用，已中止（没花钱）。'
+            $script:ResultCode = 1
+            return
+        }
     }
     $base = @('--inbox', (Join-Path $Root 'inbox'),
               '--out', (Join-Path $Root 'out'),
@@ -481,6 +614,14 @@ function Invoke-Check([string[]]$Argv) {
             } else {
                 Write-Err 'TTS_PROVIDER=doubao 但 DOUBAO_API_KEY 为空'
                 $ok = $false
+            }
+        }
+        if ($prov -eq 'local') {
+            $lurl = Get-LocalTtsUrl
+            if (Test-LocalTts $lurl) {
+                Write-Ok ('本地 TTS 服务已连上：' + $lurl)
+            } else {
+                Write-Warn ('TTS_PROVIDER=local，服务当前没起：' + $lurl + '（cast 会自动拉起）')
             }
         }
     } else {
@@ -680,6 +821,7 @@ function Invoke-Menu {
         Write-Host '  4  字幕反查（找一句话的时间点）'
         Write-Host '  5  跑离线测试'
         Write-Host '  6  安装 / 修复依赖'
+        Write-Host '  7  本地 TTS 服务（状态 / 启动 / 停止）'
         Write-Host '  0  退出'
         $choice = Read-Host '选择'
         switch ($choice) {
@@ -704,6 +846,13 @@ function Invoke-Menu {
             }
             '5' { Invoke-Test @() }
             '6' { Invoke-Setup @() }
+            '7' {
+                $act = Read-Host '1=状态 2=启动 3=停止 回车=状态'
+                $a = @('status')
+                if ($act -eq '2') { $a = @('start') }
+                elseif ($act -eq '3') { $a = @('stop') }
+                Invoke-Service $a
+            }
             '0' { return }
             default { Write-Warn '无效选择' }
         }
@@ -722,10 +871,11 @@ function Show-Help {
     Write-Host '  process [参数]      处理 inbox\ 里的音频和字幕，参数原样转给 asr.py'
     Write-Host '                      --dry-run / --kind self|external / --force / --asr-only ...'
     Write-Host '  cast [参数]         文章转播客，参数原样转给 cast.py'
-    Write-Host '                      --dry-run / --preview 300 / --rewrite / --force ...'
+    Write-Host '                      --dry-run / --preview 300 / --rewrite / --spoken / --force ...'
     Write-Host '  find 关键词 [print|play] [N]   在 out\ 的 srt 里反查时间点'
     Write-Host '  check [--offline]   自检 Python / ffmpeg / Key / 目录 / 技能'
     Write-Host '  test                离线回归测试（不联网、不花钱）'
+    Write-Host '  service [start|stop|status]  本地 Kokoro TTS 服务（cast --provider local 会自动拉起）'
     Write-Host '  setup [--with-ffmpeg]  安装依赖、生成 config.env 模板'
     Write-Host '  menu                交互菜单（双击 ASRTTS.cmd 也是这个）'
     Write-Host ''
@@ -765,6 +915,7 @@ try {
         'check'   { Invoke-Check $rest }
         'status'  { Invoke-Check $rest }
         'test'    { Invoke-Test $rest }
+        'service' { Invoke-Service $rest }
         'setup'   { Invoke-Setup $rest }
         'menu'    { Invoke-Menu }
         'help'    { Show-Help }

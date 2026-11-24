@@ -51,7 +51,7 @@ def build_fixture(root):
     return root
 
 
-SAMPLE = _VAULT / "out/2026-11-18-sample"
+SAMPLE = _VAULT / "out/2026-11-18-马督工-【睡前消息1132】拆高尔夫球场-不如收它们的税"
 if SAMPLE.is_dir():
     FOLDER = SAMPLE
     print("   素材：库里的真实样例（%s）" % SAMPLE.name)

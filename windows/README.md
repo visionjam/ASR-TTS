@@ -32,7 +32,7 @@ ASRTTS/
 
 ### 1. Python
 
-要 3.9+（示例用 3.14）。在 PowerShell 里确认：
+要 3.9+，本机是 `D:\Python314`（3.14.8）。在 PowerShell 里确认：
 
 ```powershell
 python -V
@@ -46,7 +46,7 @@ python -V
 `自检.cmd` 会检查三样东西：`libopus`、`aac`、`loudnorm`。
 ASR 切片用 `libopus`，播客成品用 `aac`，响度归一化用 `loudnorm`。
 
-如果 PATH 里已经有完整构建（gyan.dev full build 之类），可以直接用。
+本机 PATH 里已经有一个完整构建（gyan.dev full build，位于 Python313 的 Scripts 下）。
 注意它跟着那个 Python 安装走：删/换 Python313 会一起没了。想稳妥就装系统 ffmpeg，
 或用 `FFMPEG_BIN` 指向一个固定位置的 `ffmpeg.exe`。换机器时：
 
@@ -95,12 +95,12 @@ Syncthing 状态，最后调一次 DeepSeek 的模型列表接口（不产生转
 
 ### 5. Syncthing（可选，但推荐）
 
-PC 端 Syncthing 把 `<ASRTTS>` 和手机
-`/sdcard/ASRTTS` 配对。界面在 `http://127.0.0.1:8384`。
+PC 端 Syncthing 把 `D:\dsh_dev\text-works\ASRTTS` 和手机
+`/storage/emulated/0/Documents/vault/ASRTTS` 配对。界面在 `http://127.0.0.1:8384`。
 
 规则和排查见 [../同步说明.md](../同步说明.md)。Windows 这边只要确认：
 
-- 文件夹根就是 `ASRTTS` 这一层，不是它的上一层目录
+- 文件夹根就是 `ASRTTS` 这一层，不是 `text-works`
 - `.stignore` 是文件名，不是 `.stignore.txt`
 - `work/` 要同步（`chunks.json` / `s_*.wav` 是已经付过钱的结果），`config.env` 和
   `logs/` 不同步
@@ -155,7 +155,7 @@ powershell -ExecutionPolicy Bypass -File windows\asrtts.ps1 process --kind exter
 ### 文章 → 播客
 
 1. 文章（`.md/.txt`）丢进 `inbox\`
-2. 双击 `一键开播.cmd`（正式跑，**会计费**；双击时会先问一次 Y/N）
+2. 双击 `一键开播.cmd`（云端 provider 会计费，本地 0 元；双击时会先问一次 Y/N）
 3. 产出在 `out\<日期-标题>\`：`.m4a` + `.srt` + `.lrc` + `script.md` + `index.md`
 
 第一次做某篇，建议先估计划、再试音、最后整篇：
@@ -169,6 +169,18 @@ powershell -ExecutionPolicy Bypass -File windows\asrtts.ps1 cast --preview 300
 
 # 正式跑
 powershell -ExecutionPolicy Bypass -File windows\asrtts.ps1 cast
+```
+
+**走本地 Kokoro（0 元）**：`--provider local`。壳会自动检查并拉起本地服务
+（`tools\local-tts`），不用手动开窗口：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File windows\asrtts.ps1 cast --provider local --dry-run
+powershell -ExecutionPolicy Bypass -File windows\asrtts.ps1 cast --provider local
+
+# 服务管理（平时不用管，cast 会自动拉起）
+powershell -ExecutionPolicy Bypass -File windows\asrtts.ps1 service status
+powershell -ExecutionPolicy Bypass -File windows\asrtts.ps1 service stop
 ```
 
 `--force` 只重做成品，没改过的段从 `work/` 复用，**不重复计费**；
@@ -224,6 +236,7 @@ ASRTTS.cmd
 | `find 关键词 [print\|play] [N]` | 在 `out\` 的 `.srt` 里反查 |
 | `check [--offline]` | 自检 |
 | `test` | 离线回归（`t_core` + `t_subtitle` + `selftest`） |
+| `service [start\|stop\|status]` | 本地 Kokoro TTS 服务（`cast --provider local` 会自动拉起） |
 | `setup [--with-ffmpeg]` | 装依赖、生成 `config.env` 模板 |
 | `menu` | 交互菜单 |
 
@@ -246,7 +259,7 @@ ASRTTS.cmd
 | Shell | bash | Windows PowerShell 5.1（不要用 `&&`、三元表达式） |
 | 编码 | UTF-8 | 脚本带 BOM；子进程强制 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8` |
 | 播放器 | Pixel Player 等认 `.lrc` | mpv 认 `.srt`；没装播放器就默认程序 + 剪贴板时间戳 |
-| 路径 | `/sdcard/...` | `<ASRTTS>\...`，含中文/空格要加引号 |
+| 路径 | `/storage/emulated/0/...` | `D:\dsh_dev\text-works\ASRTTS\...`，含中文/空格要加引号 |
 | 执行策略 | 无 | `.cmd` 已带 `-ExecutionPolicy Bypass`；直接跑 `.ps1` 可能被拦 |
 
 **不要用 PowerShell 5.1 的 `Set-Content -Encoding UTF8` 去写 `config.env`、
@@ -300,6 +313,10 @@ ASRTTS.cmd
 | `cast --dry-run` | 不花（连 `--rewrite` 也不发） |
 | `cast --preview 300` | 约 5 分钱 |
 | `cast` | 约 1.2 元/4000 字（DeepSeek 五折价） |
+| `cast --provider local` | **0 元**（本机 GPU/CPU，服务自动拉起） |
+| `cast --spoken` | 大纲 + 落地各一次 LLM 调用（几分钱），合成照字数计 |
+| `cast --spoken --stop-at-outline` | 只有大纲那一次调用，零 TTS 费用 |
+| `check_draft.py` | 不花（离线量稿：时长、章节、重复、长句） |
 | `cast --force` | 没改过的段复用，0 元；改过的段按字数 |
 | `cast --resynth` | 全部重烧，整篇计费 |
 | `check` | 不花（只查模型列表） |

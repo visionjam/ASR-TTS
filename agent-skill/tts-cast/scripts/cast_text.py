@@ -72,6 +72,7 @@ def parse_article(raw):
 
     lines = raw.split("\n")
     title, blocks, buf = None, [], []
+    dropped, table_buf, code_buf = [], [], []
     in_code = False
 
     def flush():
@@ -82,23 +83,49 @@ def parse_article(raw):
         if text:
             blocks.append({"kind": "p", "text": text})
 
+    def flush_table():
+        """连续表格行合成一块收走。表格念出来是灾难，但不能凭空消失。"""
+        if table_buf:
+            drop("table", "\n".join(table_buf))
+            table_buf.clear()
+
+    def drop(kind, text):
+        flush()
+        dropped.append({"kind": kind, "text": text, "after_block": len(blocks)})
+
     for line in lines:
         s = line.rstrip()
-        if s.strip().startswith("```"):
-            in_code = not in_code
+        st = s.strip()
+
+        if st.startswith("```"):
+            if in_code:
+                code_buf.append(s)
+                drop("code", "\n".join(code_buf))
+                code_buf = []
+                in_code = False
+            else:
+                flush_table()
+                flush()
+                code_buf = [s]
+                in_code = True
             continue
         if in_code:
+            code_buf.append(s)
             continue
-        st = s.strip()
+
         if not st:
+            flush_table()
             flush()
             continue
         if re.match(r"^([-*_])\1{2,}$", st):        # 分隔线
+            flush_table()
             flush()
             continue
-        if st.startswith("|") and st.endswith("|"):  # 表格：读出来是灾难
+        if st.startswith("|") and st.endswith("|"):  # 表格：读出来是灾难，但别丢
             flush()
+            table_buf.append(st)
             continue
+        flush_table()
         if re.match(r"^\[\^[^\]]+\]:", st):          # 脚注定义整行丢掉
             flush()
             continue
@@ -128,8 +155,9 @@ def parse_article(raw):
 
     if title is None:
         title = fm_title or "未命名"
+    flush_table()
     # 开头的 H1 已经被抽成 title 了，别让它再当一次章节
-    return {"title": title, "blocks": blocks}
+    return {"title": title, "blocks": blocks, "dropped": dropped}
 
 
 def split_sentences(text, max_cue=MAX_CUE):
